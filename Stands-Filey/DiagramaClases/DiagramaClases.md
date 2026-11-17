@@ -1,270 +1,445 @@
 # Diagrama de clases del sistema de stands de la feria
- 
-Este documento contiene el diagrama de clases del sistema, dividido por capas del patrón MVC para que sea fácil de leer. Los diagramas están escritos en [Mermaid](https://mermaid.js.org/), que GitHub muestra automáticamente.
- 
+
+Este documento contiene el diagrama de clases del sistema, organizado por capas para representar su arquitectura actual. Se utiliza una estructura basada en MVC, complementada con servicios, interfaces y una capa de persistencia mediante JDBC.
+
+Los diagramas están escritos en [Mermaid](https://mermaid.js.org/), que GitHub muestra automáticamente.
+
 ## Índice
- 
-1. [Cómo leer el diagrama](#1-cómo-leer-el-diagrama)
-2. [Parte 1: Entidades](#2-parte-1-entidades)
-3. [Parte 2: Servicios, interfaces e implementaciones](#3-parte-2-servicios-interfaces-e-implementaciones)
-4. [Parte 3: Controladores](#4-parte-3-controladores)
+
+1. Cómo leer el diagrama
+2. Parte 1: Modelos
+3. Parte 2: Servicios, interfaces e implementaciones
+4. Parte 3: Controladores
+5. Parte 4: Persistencia y acceso a datos
+6. Parte 5: Punto de entrada
+
 ---
- 
+
 ## 1. Cómo leer el diagrama
- 
+
 ### Tipos de flecha
- 
+
 | Símbolo | Nombre | Significado |
 |---|---|---|
-| `→` | Asociación / uso | La clase de donde sale conoce o usa a la clase donde llega. |
-| `◆—` | Composición | La clase del rombo está compuesta por la otra; si desaparece el "todo", desaparecen sus partes. |
-| `┄▷` | Implementación | Una clase cumple el contrato de una interfaz. |
- 
-### Multiplicidades
- 
-| Símbolo | Significado |
-|---|---|
-| `1` | Exactamente uno |
-| `*` | Muchos |
-| `0..1` | Ninguno o uno |
- 
+| `-->` | Asociación / dependencia | Una clase utiliza o depende de otra. |
+| `--|>` | Herencia | Una clase hereda de otra. |
+| `<|..` | Implementación | Una clase implementa una interfaz. |
+
 ### Visibilidad
- 
+
 | Símbolo | Significado |
 |---|---|
 | `+` | Público |
 | `-` | Privado |
- 
+
 ---
- 
-## 2. Parte 1: Entidades
- 
-Son los datos principales del sistema y las relaciones entre ellos.
- 
+
+## 2. Parte 1: Modelos
+
+Los modelos representan los datos principales del sistema. Actualmente, estas clases contienen atributos y no incluyen métodos de lógica de negocio.
+
 ```mermaid
 classDiagram
 direction TB
+
 class Usuario {
-  -int id
-  -String nombreUsuarioEditorial
-  -String correo
-  -String contrasenaHash
-  -String telefono
-  +validarDatos() bool
+  +int id
+  +String nombreUsuarioEditorial
+  +String correo
+  +String contrasenaHash
+  +String telefono
 }
+
 class Stand {
-  -String id
-  -double largo
-  -double ancho
-  -double precio
-  -String estado
-  +calcularMetrosCuadrados() double
-  +estaDisponible() bool
-  +reservar()
-  +ocupar()
-  +liberar()
-  +bloquear()
-  +habilitarTransferencia()
+  +int numero
+  +double ancho
+  +double largo
+  +double precio
+  +EstadoStand estado
 }
+
 class Reserva {
-  -int id
-  -Date fechaReserva
-  -Date fechaLimite
-  -double montoPagado
-  -String estado
-  +calcularMontoReserva() double
-  +estaVencida() bool
-  +registrarPago(Pago)
+  +int id
+  +int usuarioId
+  +int standId
+  +LocalDate fechaReserva
+  +LocalDate fechaLimite
+  +double montoPagado
+  +EstadoReserva estado
 }
+
 class Pago {
-  -int id
-  -double monto
-  -Date fecha
-  -String tipo
-  -bool confirmado
+  +int id
+  +int reservaId
+  +double monto
+  +LocalDateTime fecha
+  +String tipo
+  +boolean confirmado
 }
+
 class TransferenciaBloqueados {
-  -int id
-  -String codigoAcceso
-  -String estado
-  -Date fechaAcceso
-  +generarCodigo()
-  +validarCodigo(String) bool
-  +registrarAcceso()
+  +int id
+  +int standId
+  +int usuarioId
+  +int reservaId
+  +String codigoAcceso
+  +String estado
+  +LocalDateTime fechaAcceso
 }
+
 class Notificacion {
-  -int id
-  -String tipo
-  -String asunto
-  -String mensaje
-  -Date fecha
-  -bool leida
-  +marcarLeida()
+  +int id
+  +int usuarioId
+  +String tipo
+  +String asunto
+  +String mensaje
+  +LocalDateTime fecha
+  +boolean leida
 }
-Usuario "1" --> "*" Reserva : realiza
-Stand "1" --> "*" Reserva : tiene
-Reserva "1" *-- "*" Pago : incluye
-Stand "1" --> "0..1" TransferenciaBloqueados : puede tener
-TransferenciaBloqueados "*" --> "0..1" Usuario : puede tener
-TransferenciaBloqueados "1" --> "0..1" Reserva : genera
-Usuario "1" --> "*" Notificacion : recibe
+
+class EstadoStand {
+  <<enumeration>>
+  DISPONIBLE
+  RESERVADO
+  VENDIDO
+}
+
+class EstadoReserva {
+  <<enumeration>>
+  ACTIVA
+  VENCIDA
+  CANCELADA
+}
+
+Stand --> EstadoStand
+Reserva --> EstadoReserva
 ```
- 
-### Relaciones
- 
-| Relación | Descripción |
+
+### Características de los modelos
+
+| Clase | Descripción |
 |---|---|
-| `Usuario` 1 → `Reserva` * "realiza" | Un usuario puede hacer muchas reservas. |
-| `Stand` 1 → `Reserva` * "tiene" | Un stand puede tener varias reservas a lo largo del tiempo. |
-| `Reserva` 1 ◆— `Pago` * "incluye" | Una reserva incluye varios pagos (el 15% inicial y los siguientes). Sin la reserva, el pago no existe. |
-| `Stand` 1 → `TransferenciaBloqueados` 0..1 "puede tener" | Solo los stands bloqueados tienen una transferencia. |
-| `TransferenciaBloqueados` * → `Usuario` 0..1 "puede tener" | Una transferencia puede tener un usuario asociado; un mismo usuario puede estar en varias transferencias. |
-| `TransferenciaBloqueados` 1 → `Reserva` 0..1 "genera" | Cuando el propietario paga la transferencia, se genera su reserva. Antes del pago no existe. |
-| `Usuario` 1 → `Notificacion` * "recibe" | Un usuario recibe muchas notificaciones. |
- 
+| `Usuario` | Representa a una persona registrada en el sistema. |
+| `Stand` | Representa un espacio disponible dentro de la feria. |
+| `Reserva` | Almacena la información de una reservación. |
+| `Pago` | Representa un pago asociado a una reserva. |
+| `TransferenciaBloqueados` | Almacena la información de una transferencia de stands bloqueados. |
+| `Notificacion` | Representa una notificación destinada a un usuario. |
+| `EstadoStand` | Define los posibles estados de un stand. |
+| `EstadoReserva` | Define los posibles estados de una reserva. |
+
+**Nota:** Las relaciones entre entidades se representan mediante identificadores, como `usuarioId`, `standId` y `reservaId`. Esto permite relacionar los registros al recuperarlos desde la base de datos.
+
 ---
- 
+
 ## 3. Parte 2: Servicios, interfaces e implementaciones
- 
-Los servicios contienen las reglas de negocio. El diagrama está agrupado en tres bloques: **Servicios**, **Interfaces** e **Implementaciones**, y se lee de arriba hacia abajo: arriba están los que inician acciones, en medio los contratos (interfaces) y abajo las clases que los cumplen.
- 
-Los servicios dependen de **interfaces** y no de implementaciones concretas. Así se puede cambiar la pasarela de pago, los canales de notificación o la política de descuento sin modificar los servicios.
- 
+
+Los servicios contienen las operaciones y reglas del negocio. Se encargan de coordinar las operaciones que necesitan los controladores y de comunicarse con los DAO para recuperar información.
+
+### Diagrama de servicios
+
 ```mermaid
 classDiagram
 direction TB
-namespace Servicios {
-  class TareasProgramadas {
-    +liberarReservasVencidas()
-    +enviarRecordatorios()
-    +verificarPagosRecibidos()
-  }
-  class ServicioTransferencias {
-    +enviarPermiso(transferencia)
-    +accederTransferencia(permiso)
-    +habilitarPago(stand, codigo)
-  }
-  class ServicioPagos {
-    +registrarPago(reserva, monto)
-    +verificarPagosRecibidos()
-  }
-  class ServicioReservas {
-    +reservarStand(usuario, stand) Reserva
-    +liberarReservasVencidas()
-  }
-  class ServicioNotificaciones {
-    +notificar(usuario, tipo)
-    +listarDeUsuario(usuario)
-  }
-  class ServicioAutenticacion {
-    +registrarUsuario(datos)
-    +iniciarSesion(correo, contrasena)
-    +validarSesion() bool
-    +correoRegistrado(correo) bool
-  }
+
+class ServicioStand {
+  +obtenerTodos()
+  +obtenerPorId(id)
 }
-namespace Interfaces {
-  class PasarelaPago {
-    <<interface>>
-    +cobrar(monto) bool
-    +consultarPago(referencia) bool
-  }
-  class PoliticaDescuento {
-    <<interface>>
-    +calcular(precio, fechaPago) double
-  }
-  class CanalNotificacion {
-    <<interface>>
-    +enviar(notificacion)
-  }
+
+class ServicioUsuario {
+  +obtenerTodos()
+  +obtenerPorId(id)
 }
-namespace Implementaciones {
-  class DescuentoProntoPago
-  class CanalCorreo
-  class CanalPagina
+
+class ServicioReserva {
+  +obtenerTodos()
+  +obtenerPorId(id)
 }
-TareasProgramadas --> ServicioPagos
-TareasProgramadas --> ServicioReservas
-TareasProgramadas --> ServicioNotificaciones
-ServicioTransferencias --> ServicioPagos
-ServicioTransferencias --> ServicioNotificaciones
-ServicioPagos --> ServicioReservas
-ServicioReservas --> ServicioNotificaciones
-ServicioPagos --> PasarelaPago
-ServicioReservas --> PoliticaDescuento
-ServicioNotificaciones --> CanalNotificacion
+
+class ServicioNotificacion {
+  +obtenerTodos()
+  +obtenerPorId(id)
+}
+
+class ServicioPago {
+  +obtenerTodos()
+  +obtenerPorId(id)
+}
+
+class ServicioTransferencia {
+  +obtenerTodos()
+  +obtenerPorId(id)
+}
+
+class TareasProgramadas {
+}
+
+```
+
+### Interfaces
+
+Las interfaces definen contratos que deben cumplir las clases que las implementan. Esto permite mantener separadas las reglas generales de sus implementaciones concretas.
+
+```mermaid
+classDiagram
+direction TB
+
+class CanalNotificacion {
+  <<interface>>
+  +enviar(notificacion)
+}
+
+class PasarelaPago {
+  <<interface>>
+  +cobrar(monto)
+  +consultarPago(referencia)
+}
+
+class PoliticaDescuento {
+  <<interface>>
+  +calcular(precio, fechaPago)
+}
+```
+
+### Implementaciones
+
+```mermaid
+classDiagram
+direction TB
+
+class DescuentoProntoPago
+
+class CanalCorreo
+
+class CanalPagina
+
+class PasarelaPagoSimulada
+
 PoliticaDescuento <|.. DescuentoProntoPago
 CanalNotificacion <|.. CanalCorreo
 CanalNotificacion <|.. CanalPagina
+PasarelaPago <|.. PasarelaPagoSimulada
 ```
- 
-### Dependencias entre servicios
- 
-| Origen | Depende de | Para qué |
-|---|---|---|
-| `TareasProgramadas` | `ServicioReservas` | Liberar las reservas vencidas. |
-| `TareasProgramadas` | `ServicioPagos` | Verificar qué pagos ya llegaron. |
-| `TareasProgramadas` | `ServicioNotificaciones` | Enviar recordatorios de fecha límite. |
-| `ServicioTransferencias` | `ServicioPagos` | Cobrar el pago de la transferencia. |
-| `ServicioTransferencias` | `ServicioNotificaciones` | Enviar el permiso de transferencia por correo. |
-| `ServicioPagos` | `ServicioReservas` | Actualizar la reserva cuando llega un pago. |
-| `ServicioReservas` | `ServicioNotificaciones` | Enviar la confirmación de la reserva. |
- 
-`ServicioAutenticacion` no depende de ningún otro servicio.
- 
-### Interfaces e implementaciones
- 
-| Servicio | Usa la interfaz | Contrato | Implementaciones |
-|---|---|---|---|
-| `ServicioReservas` | `PoliticaDescuento` | `calcular(precio, fechaPago)` | `DescuentoProntoPago` |
-| `ServicioPagos` | `PasarelaPago` | `cobrar(monto)`, `consultarPago(referencia)` | A definir |
-| `ServicioNotificaciones` | `CanalNotificacion` | `enviar(notificacion)` | `CanalCorreo`, `CanalPagina` |
- 
-> **Sobre `PasarelaPago`:** representa el servicio externo que procesa los pagos (el sistema no maneja datos de tarjetas directamente). Aún no tiene implementación; puede empezar como una pasarela simulada.
- 
+
+### Descripción de las clases
+
+| Clase | Responsabilidad |
+|---|---|
+| `ServicioStand` | Gestiona las operaciones de consulta de stands. |
+| `ServicioUsuario` | Gestiona las operaciones de consulta de usuarios. |
+| `ServicioReserva` | Gestiona las operaciones de consulta de reservas. |
+| `ServicioNotificacion` | Gestiona las operaciones relacionadas con notificaciones. |
+| `ServicioPago` | Gestiona las operaciones de consulta de pagos. |
+| `ServicioTransferencia` | Gestiona las operaciones de consulta de transferencias. |
+| `TareasProgramadas` | Agrupa tareas que pueden ejecutarse automáticamente. |
+| `CanalNotificacion` | Define el contrato para los canales de notificación. |
+| `PasarelaPago` | Define el contrato para el procesamiento de pagos. |
+| `PoliticaDescuento` | Define el contrato para calcular descuentos. |
+| `CanalCorreo` | Implementa las notificaciones mediante correo. |
+| `CanalPagina` | Implementa las notificaciones dentro de la página. |
+| `DescuentoProntoPago` | Implementa una política de descuento por pronto pago. |
+| `PasarelaPagoSimulada` | Simula el procesamiento de pagos. |
+
 ---
- 
+
 ## 4. Parte 3: Controladores
- 
-Los controladores reciben las acciones del usuario desde la vista y se las pasan a los servicios. No contienen reglas de negocio.
- 
+
+Los controladores reciben las solicitudes y las delegan a los servicios correspondientes. No deben contener directamente las consultas SQL ni concentrar la lógica del negocio.
+
 ```mermaid
 classDiagram
 direction TB
-class ControladorAcceso {
-  +registrar(datos)
-  +iniciarSesion(correo, contrasena)
+
+class ControladorStand {
+  +obtenerTodos()
+  +obtenerPorId(id)
 }
-class ControladorStands {
-  +verMapa()
-  +verDetalle(idStand)
-  +reservar(idStand)
-  +pagar(idReserva, monto)
+
+class ControladorUsuario {
+  +obtenerTodos()
+  +obtenerPorId(id)
 }
-class ControladorNotificaciones {
-  +verBandeja()
-  +marcarLeida(idNotificacion)
+
+class ControladorReserva {
+  +obtenerTodos()
+  +obtenerPorId(id)
 }
+
+class ControladorNotificacion {
+  +obtenerTodos()
+  +obtenerPorId(id)
+}
+
+class ControladorPago {
+  +obtenerTodos()
+  +obtenerPorId(id)
+}
+
 class ControladorTransferencia {
-  +accederDesdeCorreo(permiso)
-  +ingresarCodigo(idStand, codigo)
+  +obtenerTodos()
+  +obtenerPorId(id)
 }
-ControladorAcceso --> ServicioAutenticacion
-ControladorStands --> ServicioReservas
-ControladorStands --> ServicioPagos
-ControladorNotificaciones --> ServicioNotificaciones
-ControladorTransferencia --> ServicioTransferencias
-ControladorTransferencia --> ServicioPagos
+
+ControladorStand --> ServicioStand
+ControladorUsuario --> ServicioUsuario
+ControladorReserva --> ServicioReserva
+ControladorNotificacion --> ServicioNotificacion
+ControladorPago --> ServicioPago
+ControladorTransferencia --> ServicioTransferencia
 ```
- 
+
 ### Dependencias
- 
-| Controlador | Usa | Para qué |
+
+| Controlador | Servicio utilizado | Responsabilidad |
 |---|---|---|
-| `ControladorAcceso` | `ServicioAutenticacion` | Registrar usuarios e iniciar sesión. |
-| `ControladorStands` | `ServicioReservas` | Reservar stands. |
-| `ControladorStands` | `ServicioPagos` | Registrar pagos. |
-| `ControladorNotificaciones` | `ServicioNotificaciones` | Obtener las notificaciones del usuario. |
-| `ControladorTransferencia` | `ServicioTransferencias` | Acceder a la transferencia y validar el código. |
-| `ControladorTransferencia` | `ServicioPagos` | Habilitar y registrar el pago del stand transferido. |
- 
+| `ControladorStand` | `ServicioStand` | Gestionar solicitudes relacionadas con stands. |
+| `ControladorUsuario` | `ServicioUsuario` | Gestionar solicitudes relacionadas con usuarios. |
+| `ControladorReserva` | `ServicioReserva` | Gestionar solicitudes relacionadas con reservas. |
+| `ControladorNotificacion` | `ServicioNotificacion` | Gestionar solicitudes relacionadas con notificaciones. |
+| `ControladorPago` | `ServicioPago` | Gestionar solicitudes relacionadas con pagos. |
+| `ControladorTransferencia` | `ServicioTransferencia` | Gestionar solicitudes relacionadas con transferencias. |
+
+---
+
+## 5. Parte 4: Persistencia y acceso a datos
+
+Esta capa se encarga de la comunicación con la base de datos mediante JDBC. Los DAO contienen las consultas SQL y los servicios los utilizan para recuperar la información.
+
+### Diagrama de persistencia
+
+```mermaid
+classDiagram
+direction TB
+
+class ConexionBD {
+  +obtenerConexion() Connection
+}
+
+class DAOBase {
+}
+
+class StandDAO {
+  +obtenerTodos()
+  +obtenerPorId(id)
+}
+
+class UsuarioDAO {
+  +obtenerTodos()
+  +obtenerPorId(id)
+}
+
+class ReservaDAO {
+  +obtenerTodos()
+  +obtenerPorId(id)
+}
+
+class NotificacionDAO {
+  +obtenerTodos()
+  +obtenerPorId(id)
+}
+
+class PagoDAO {
+  +obtenerTodos()
+  +obtenerPorId(id)
+}
+
+class TransferenciaDAO {
+  +obtenerTodos()
+  +obtenerPorId(id)
+}
+
+DAOBase <|-- StandDAO
+DAOBase <|-- UsuarioDAO
+DAOBase <|-- ReservaDAO
+DAOBase <|-- NotificacionDAO
+DAOBase <|-- PagoDAO
+DAOBase <|-- TransferenciaDAO
+
+StandDAO --> ConexionBD
+UsuarioDAO --> ConexionBD
+ReservaDAO --> ConexionBD
+NotificacionDAO --> ConexionBD
+PagoDAO --> ConexionBD
+TransferenciaDAO --> ConexionBD
+```
+
+### Dependencias entre servicios y DAO
+
+```mermaid
+classDiagram
+direction TB
+
+ServicioStand --> StandDAO
+ServicioUsuario --> UsuarioDAO
+ServicioReserva --> ReservaDAO
+ServicioNotificacion --> NotificacionDAO
+ServicioPago --> PagoDAO
+ServicioTransferencia --> TransferenciaDAO
+```
+
+### Responsabilidades
+
+| Clase | Responsabilidad |
+|---|---|
+| `ConexionBD` | Establece y proporciona conexiones con la base de datos. |
+| `DAOBase` | Funciona como clase padre para compartir funcionalidades entre los DAO. |
+| `StandDAO` | Ejecuta consultas para recuperar stands. |
+| `UsuarioDAO` | Ejecuta consultas para recuperar usuarios. |
+| `ReservaDAO` | Ejecuta consultas para recuperar reservas. |
+| `NotificacionDAO` | Ejecuta consultas para recuperar notificaciones. |
+| `PagoDAO` | Ejecuta consultas para recuperar pagos. |
+| `TransferenciaDAO` | Ejecuta consultas para recuperar transferencias. |
+
+**Importante:** En esta versión, los DAO están preparados para operaciones de lectura (`SELECT`). Todavía no se implementan operaciones de escritura como `INSERT`, `UPDATE` o `DELETE`.
+
+---
+
+## 6. Parte 5: Punto de entrada
+
+`Main.java` es el punto de entrada de la aplicación. Se encarga de inicializar los componentes necesarios para comenzar la ejecución del sistema.
+
+```mermaid
+classDiagram
+direction TB
+
+class Main
+
+Main --> ControladorStand
+Main --> ControladorUsuario
+Main --> ControladorReserva
+Main --> ControladorNotificacion
+Main --> ControladorPago
+Main --> ControladorTransferencia
+```
+
+---
+
+## 7. Resumen de la arquitectura
+
+| Capa | Responsabilidad principal |
+|---|---|
+| Modelo | Representar los datos del sistema. |
+| Controladores | Recibir y coordinar solicitudes. |
+| Servicios | Contener la lógica del negocio. |
+| Interfaces | Definir contratos de comportamiento. |
+| Implementaciones | Proporcionar implementaciones concretas. |
+| Persistencia | Gestionar la conexión y el acceso a la base de datos. |
+| DAO | Ejecutar consultas SQL. |
+
+La comunicación principal del sistema sigue este flujo:
+
+```mermaid
+flowchart TD
+    A[Main] --> B[Controlador]
+    B --> C[Servicio]
+    C --> D[DAO]
+    D --> E[ConexionBD]
+    E --> F[(Base de datos)]
+    F --> E
+    E --> D
+    D --> C
+    C --> B
+```
+
+Esta organización permite separar responsabilidades y facilita el mantenimiento y la futura ampliación del sistema.
