@@ -47,21 +47,23 @@ class Usuario {
   +String nombreUsuarioEditorial
   +String correo
   +String contrasenaHash
+  +String salt
   +String telefono
 }
 
 class Stand {
-  +int numero
-  +double ancho
+  +String id
   +double largo
+  +double ancho
   +double precio
   +EstadoStand estado
+  +Integer transferenciaId
 }
 
 class Reserva {
   +int id
   +int usuarioId
-  +int standId
+  +String standId
   +LocalDate fechaReserva
   +LocalDate fechaLimite
   +double montoPagado
@@ -79,12 +81,12 @@ class Pago {
 
 class TransferenciaBloqueados {
   +int id
-  +int standId
-  +int usuarioId
-  +int reservaId
   +String codigoAcceso
-  +String estado
+  +EstadoTransferencia estado
   +LocalDateTime fechaAcceso
+  +int usuarioId
+  +Integer reservaId
+  +String standId
 }
 
 class Notificacion {
@@ -101,18 +103,28 @@ class EstadoStand {
   <<enumeration>>
   DISPONIBLE
   RESERVADO
-  VENDIDO
+  OCUPADO
+  BLOQUEADO
 }
 
 class EstadoReserva {
   <<enumeration>>
   ACTIVA
+  COMPLETADA
   VENCIDA
-  CANCELADA
+}
+
+class EstadoTransferencia {
+  <<enumeration>>
+  PENDIENTE
+  ACEPTADA
+  RECHAZADA
+  EXPIRADA
 }
 
 Stand --> EstadoStand
 Reserva --> EstadoReserva
+TransferenciaBloqueados --> EstadoTransferencia
 ```
 
 ### Características de los modelos
@@ -127,6 +139,7 @@ Reserva --> EstadoReserva
 | `Notificacion` | Representa una notificación destinada a un usuario. |
 | `EstadoStand` | Define los posibles estados de un stand. |
 | `EstadoReserva` | Define los posibles estados de una reserva. |
+| `EstadoTransferencia` | Define los posibles estados de una transferencia. |
 
 **Nota:** Las relaciones entre entidades se representan mediante identificadores, como `usuarioId`, `standId` y `reservaId`. Esto permite relacionar los registros al recuperarlos desde la base de datos.
 
@@ -143,38 +156,80 @@ classDiagram
 direction TB
 
 class ServicioStand {
-  +obtenerTodos()
-  +obtenerPorId(id)
+  +listarStands()
+  +listarPorEstado(estado)
+  +listarDisponibles()
+  +buscarStand(id)
+  +calcularArea(stand)
+  +puedeReservarse(stand)
+  +crear(stand)
+  +actualizar(stand)
+  +cambiarEstado(id, estado)
+  +eliminar(id)
 }
 
 class ServicioUsuario {
-  +obtenerTodos()
-  +obtenerPorId(id)
+  +listarUsuarios()
+  +buscarPorId(id)
+  +buscarPorCorreo(correo)
+  +registrar(nombre, correo, contrasena, telefono)
+  +iniciarSesion(correo, contrasena)
+  +actualizar(usuario)
+  +cambiarContrasena(id, actual, nueva)
+  +eliminar(id)
 }
 
 class ServicioReserva {
-  +obtenerTodos()
-  +obtenerPorId(id)
-}
-
-class ServicioNotificacion {
-  +obtenerTodos()
-  +obtenerPorId(id)
+  +listarReservas()
+  +listarDeUsuario(usuarioId)
+  +buscarPorId(id)
+  +estaVencida(reserva)
+  +reservar(usuarioId, standId)
+  +actualizar(reserva)
+  +liberarVencidas()
+  +eliminar(id)
 }
 
 class ServicioPago {
-  +obtenerTodos()
-  +obtenerPorId(id)
+  +listarTodos()
+  +listarDeReserva(reservaId)
+  +buscarPorId(id)
+  +calcularSaldoPendiente(reservaId)
+  +registrarPago(reservaId, monto, tipo)
+  +actualizar(pago)
+  +confirmar(id)
+  +eliminar(id)
+}
+
+class ServicioNotificacion {
+  +listarTodas()
+  +listarDeUsuario(usuarioId)
+  +listarNoLeidas(usuarioId)
+  +buscarPorId(id)
+  +crear(usuarioId, tipo, asunto, mensaje)
+  +actualizar(notificacion)
+  +marcarLeida(id)
+  +eliminar(id)
 }
 
 class ServicioTransferencia {
-  +obtenerTodos()
-  +obtenerPorId(id)
+  +listarTransferencias()
+  +buscarPorId(id)
+  +buscarPorCodigo(codigo)
+  +validarCodigo(standId, codigo)
+  +crear(standId, usuarioId)
+  +registrarAcceso(transferenciaId)
+  +completar(standId, codigo, usuarioId)
+  +actualizar(transferencia)
+  +eliminar(id)
 }
 
 class TareasProgramadas {
 }
 
+ServicioReserva --> PasarelaPago
+ServicioPago --> PasarelaPago
+ServicioTransferencia --> ServicioReserva
 ```
 
 ### Interfaces
@@ -226,12 +281,12 @@ PasarelaPago <|.. PasarelaPagoSimulada
 
 | Clase | Responsabilidad |
 |---|---|
-| `ServicioStand` | Gestiona las operaciones de consulta de stands. |
-| `ServicioUsuario` | Gestiona las operaciones de consulta de usuarios. |
-| `ServicioReserva` | Gestiona las operaciones de consulta de reservas. |
-| `ServicioNotificacion` | Gestiona las operaciones relacionadas con notificaciones. |
-| `ServicioPago` | Gestiona las operaciones de consulta de pagos. |
-| `ServicioTransferencia` | Gestiona las operaciones de consulta de transferencias. |
+| `ServicioStand` | CRUD de stands con validación de dimensiones, precio y estado. |
+| `ServicioUsuario` | Registro con validaciones, inicio de sesión y CRUD de usuarios. Guarda contraseñas con hash PBKDF2 + salt. |
+| `ServicioReserva` | Reserva con pago del 15%, plazo de 1 mes, control de concurrencia, liberación de vencidas y CRUD. |
+| `ServicioNotificacion` | CRUD de notificaciones y consulta de no leídas. |
+| `ServicioPago` | Registro de abonos, cálculo de saldo y actualización automática de reserva y stand al liquidar. |
+| `ServicioTransferencia` | Genera códigos únicos, registra el acceso del propietario, valida el código y completa la transferencia. |
 | `TareasProgramadas` | Agrupa tareas que pueden ejecutarse automáticamente. |
 | `CanalNotificacion` | Define el contrato para los canales de notificación. |
 | `PasarelaPago` | Define el contrato para el procesamiento de pagos. |
@@ -252,33 +307,61 @@ classDiagram
 direction TB
 
 class ControladorStand {
-  +obtenerTodos()
-  +obtenerPorId(id)
+  +listar()
+  +listarDisponibles()
+  +consultar(id)
+  +crear(stand)
+  +actualizar(stand)
+  +cambiarEstado(id, estado)
+  +eliminar(id)
 }
 
 class ControladorUsuario {
-  +obtenerTodos()
-  +obtenerPorId(id)
+  +listar()
+  +consultar(id)
+  +registrar(...)
+  +iniciarSesion(correo, contrasena)
+  +actualizar(usuario)
+  +cambiarContrasena(id, actual, nueva)
+  +eliminar(id)
 }
 
 class ControladorReserva {
-  +obtenerTodos()
-  +obtenerPorId(id)
+  +listar()
+  +consultar(id)
+  +reservar(usuarioId, standId)
+  +actualizar(reserva)
+  +liberarVencidas()
+  +eliminar(id)
 }
 
 class ControladorNotificacion {
-  +obtenerTodos()
-  +obtenerPorId(id)
+  +listar()
+  +listarDeUsuario(usuarioId)
+  +crear(...)
+  +actualizar(notificacion)
+  +marcarLeida(id)
+  +eliminar(id)
 }
 
 class ControladorPago {
-  +obtenerTodos()
-  +obtenerPorId(id)
+  +listar()
+  +listarDeReserva(reservaId)
+  +saldoPendiente(reservaId)
+  +registrarPago(reservaId, monto, tipo)
+  +actualizar(pago)
+  +confirmar(id)
+  +eliminar(id)
 }
 
 class ControladorTransferencia {
-  +obtenerTodos()
-  +obtenerPorId(id)
+  +listar()
+  +consultar(id)
+  +crear(standId, usuarioId)
+  +registrarAcceso(id)
+  +completar(standId, codigo, usuarioId)
+  +actualizar(transferencia)
+  +eliminar(id)
 }
 
 ControladorStand --> ServicioStand
@@ -316,37 +399,92 @@ class ConexionBD {
   +obtenerConexion() Connection
 }
 
+class ConsultasSQL {
+  <<final>>
+  Usuarios
+  Stands
+  Reservas
+  Pagos
+  Notificaciones
+  Transferencias
+}
+
 class DAOBase {
+  <<abstract>>
+  #consultarLista(sql, parametros, mapeador)
+  #consultarUno(sql, parametros, mapeador)
+  #insertarYObtenerId(sql, parametros)
+  #ejecutar(sql, parametros)
 }
 
 class StandDAO {
-  +obtenerTodos()
-  +obtenerPorId(id)
+  +listarTodos()
+  +listarPorEstado(estado)
+  +buscarPorId(id)
+  +insertar(stand)
+  +actualizar(stand)
+  +cambiarEstado(id, estado)
+  +cambiarEstadoSiEsta(id, esperado, nuevo)
+  +asignarTransferencia(standId, transferenciaId)
+  +eliminar(id)
 }
 
 class UsuarioDAO {
-  +obtenerTodos()
-  +obtenerPorId(id)
+  +listarTodos()
+  +buscarPorId(id)
+  +buscarPorCorreo(correo)
+  +insertar(usuario)
+  +actualizar(usuario)
+  +actualizarContrasena(id, hash, salt)
+  +eliminar(id)
 }
 
 class ReservaDAO {
-  +obtenerTodos()
-  +obtenerPorId(id)
+  +listarTodos()
+  +listarPorUsuario(usuarioId)
+  +listarPorStand(standId)
+  +listarActivasVencidas(hoy)
+  +buscarPorId(id)
+  +insertar(reserva)
+  +actualizar(reserva)
+  +actualizarMonto(id, monto)
+  +cambiarEstado(id, estado)
+  +eliminar(id)
 }
 
 class NotificacionDAO {
-  +obtenerTodos()
-  +obtenerPorId(id)
+  +listarTodas()
+  +listarPorUsuario(usuarioId)
+  +listarNoLeidas(usuarioId)
+  +buscarPorId(id)
+  +insertar(notificacion)
+  +actualizar(notificacion)
+  +marcarLeida(id)
+  +eliminar(id)
 }
 
 class PagoDAO {
-  +obtenerTodos()
-  +obtenerPorId(id)
+  +listarTodos()
+  +listarPorReserva(reservaId)
+  +buscarPorId(id)
+  +sumarConfirmados(reservaId)
+  +insertar(pago)
+  +actualizar(pago)
+  +confirmar(id)
+  +eliminar(id)
 }
 
 class TransferenciaDAO {
-  +obtenerTodos()
-  +obtenerPorId(id)
+  +listarTodas()
+  +buscarPorId(id)
+  +buscarPorCodigo(codigo)
+  +listarPorStand(standId)
+  +insertar(transferencia)
+  +actualizar(transferencia)
+  +cambiarEstado(id, estado)
+  +registrarAcceso(id, fecha)
+  +asignarReserva(id, reservaId)
+  +eliminar(id)
 }
 
 DAOBase <|-- StandDAO
@@ -356,12 +494,13 @@ DAOBase <|-- NotificacionDAO
 DAOBase <|-- PagoDAO
 DAOBase <|-- TransferenciaDAO
 
-StandDAO --> ConexionBD
-UsuarioDAO --> ConexionBD
-ReservaDAO --> ConexionBD
-NotificacionDAO --> ConexionBD
-PagoDAO --> ConexionBD
-TransferenciaDAO --> ConexionBD
+DAOBase --> ConexionBD
+StandDAO --> ConsultasSQL
+UsuarioDAO --> ConsultasSQL
+ReservaDAO --> ConsultasSQL
+NotificacionDAO --> ConsultasSQL
+PagoDAO --> ConsultasSQL
+TransferenciaDAO --> ConsultasSQL
 ```
 
 ### Dependencias entre servicios y DAO
@@ -373,9 +512,14 @@ direction TB
 ServicioStand --> StandDAO
 ServicioUsuario --> UsuarioDAO
 ServicioReserva --> ReservaDAO
+ServicioReserva --> StandDAO
+ServicioReserva --> PagoDAO
 ServicioNotificacion --> NotificacionDAO
 ServicioPago --> PagoDAO
+ServicioPago --> ReservaDAO
+ServicioPago --> StandDAO
 ServicioTransferencia --> TransferenciaDAO
+ServicioTransferencia --> StandDAO
 ```
 
 ### Responsabilidades
@@ -383,15 +527,16 @@ ServicioTransferencia --> TransferenciaDAO
 | Clase | Responsabilidad |
 |---|---|
 | `ConexionBD` | Establece y proporciona conexiones con la base de datos. |
-| `DAOBase` | Funciona como clase padre para compartir funcionalidades entre los DAO. |
-| `StandDAO` | Ejecuta consultas para recuperar stands. |
-| `UsuarioDAO` | Ejecuta consultas para recuperar usuarios. |
-| `ReservaDAO` | Ejecuta consultas para recuperar reservas. |
-| `NotificacionDAO` | Ejecuta consultas para recuperar notificaciones. |
-| `PagoDAO` | Ejecuta consultas para recuperar pagos. |
-| `TransferenciaDAO` | Ejecuta consultas para recuperar transferencias. |
+| `ConsultasSQL` | **Única clase que contiene las sentencias SQL** (SELECT, INSERT, UPDATE y DELETE), agrupadas por tabla. |
+| `DAOBase` | Clase padre que ejecuta las consultas con JDBC: abre la conexión, asigna parámetros, recorre resultados y traduce errores. |
+| `StandDAO` | CRUD de la tabla `stands`. |
+| `UsuarioDAO` | CRUD de la tabla `usuarios`. |
+| `ReservaDAO` | CRUD de la tabla `reservas`. |
+| `NotificacionDAO` | CRUD de la tabla `notificaciones`. |
+| `PagoDAO` | CRUD de la tabla `pagos`. |
+| `TransferenciaDAO` | CRUD de la tabla `transferencias`. |
 
-**Importante:** En esta versión, los DAO están preparados para operaciones de lectura (`SELECT`). Todavía no se implementan operaciones de escritura como `INSERT`, `UPDATE` o `DELETE`.
+**Importante:** En esta versión los DAO implementan el CRUD completo (`SELECT`, `INSERT`, `UPDATE` y `DELETE`). Ningún DAO escribe SQL directamente: todas las sentencias se toman de `ConsultasSQL`, y la ejecución JDBC repetida vive en `DAOBase`.
 
 ---
 
@@ -412,6 +557,8 @@ Main --> ControladorNotificacion
 Main --> ControladorPago
 Main --> ControladorTransferencia
 ```
+
+`Main` verifica la conexión, arma las capas y ejecuta una demostración del CRUD completo con datos temporales que borra al terminar, por lo que la base de datos queda igual que antes.
 
 ---
 
@@ -434,6 +581,7 @@ flowchart TD
     A[Main] --> B[Controlador]
     B --> C[Servicio]
     C --> D[DAO]
+    D --> Q[ConsultasSQL]
     D --> E[ConexionBD]
     E --> F[(Base de datos)]
     F --> E

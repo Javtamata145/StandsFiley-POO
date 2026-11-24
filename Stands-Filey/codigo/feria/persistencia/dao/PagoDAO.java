@@ -1,48 +1,75 @@
 package feria.persistencia.dao;
 
 import feria.modelo.Pago;
-import java.sql.*;
-import java.util.*;
+import feria.persistencia.ConsultasSQL.Pagos;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.List;
+import java.util.Optional;
 
+/** Acceso a datos de la tabla pagos. CRUD completo. */
 public class PagoDAO extends DAOBase {
+
+    // ---------------- READ ----------------
+    public List<Pago> listarTodos() {
+        return consultarLista(Pagos.LISTAR_TODOS, SIN_PARAMETROS, this::mapear);
+    }
+
     public List<Pago> listarPorReserva(int reservaId) {
-        String sql = "SELECT id, reserva_id, monto, fecha, tipo, confirmado FROM pagos WHERE reserva_id = ?";
-        List<Pago> lista = new ArrayList<>();
-        try (Connection c = conectar(); PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setInt(1, reservaId);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    Pago x = new Pago();
-                    x.id = rs.getInt("id");
-                    x.reservaId = rs.getInt("reserva_id");
-                    x.monto = rs.getDouble("monto");
-                    Timestamp fecha = rs.getTimestamp("fecha");
-                    x.fecha = fecha == null ? null : fecha.toLocalDateTime();
-                    x.tipo = rs.getString("tipo");
-                    x.confirmado = rs.getBoolean("confirmado");
-                    lista.add(x);
-                }
-            }
-            return lista;
-        } catch (SQLException e) { throw errorLectura(e); }
+        return consultarLista(Pagos.LISTAR_POR_RESERVA, ps -> ps.setInt(1, reservaId), this::mapear);
     }
 
     public Optional<Pago> buscarPorId(int id) {
-        String sql = "SELECT id, reserva_id, monto, fecha, tipo, confirmado FROM pagos WHERE id = ?";
-        try (Connection c = conectar(); PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setInt(1, id);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) return Optional.empty();
-                Pago x = new Pago();
-                x.id = rs.getInt("id");
-                x.reservaId = rs.getInt("reserva_id");
-                x.monto = rs.getDouble("monto");
-                Timestamp fecha = rs.getTimestamp("fecha");
-                x.fecha = fecha == null ? null : fecha.toLocalDateTime();
-                x.tipo = rs.getString("tipo");
-                x.confirmado = rs.getBoolean("confirmado");
-                return Optional.of(x);
-            }
-        } catch (SQLException e) { throw errorLectura(e); }
+        return consultarUno(Pagos.BUSCAR_POR_ID, ps -> ps.setInt(1, id), this::mapear);
+    }
+
+    /** Suma de los pagos confirmados de una reserva. */
+    public double sumarConfirmados(int reservaId) {
+        return consultarUno(Pagos.SUMAR_CONFIRMADOS, ps -> ps.setInt(1, reservaId),
+                rs -> rs.getDouble("total")).orElse(0.0);
+    }
+
+    // ---------------- CREATE ----------------
+    public Pago insertar(Pago p) {
+        p.id = insertarYObtenerId(Pagos.INSERTAR, ps -> {
+            ps.setInt(1, p.reservaId);
+            ps.setDouble(2, p.monto);
+            setFechaHora(ps, 3, p.fecha);
+            ps.setString(4, p.tipo);
+            ps.setBoolean(5, p.confirmado);
+        });
+        return p;
+    }
+
+    // ---------------- UPDATE ----------------
+    public boolean actualizar(Pago p) {
+        return ejecutar(Pagos.ACTUALIZAR, ps -> {
+            ps.setInt(1, p.reservaId);
+            ps.setDouble(2, p.monto);
+            setFechaHora(ps, 3, p.fecha);
+            ps.setString(4, p.tipo);
+            ps.setBoolean(5, p.confirmado);
+            ps.setInt(6, p.id);
+        }) > 0;
+    }
+
+    public boolean confirmar(int id) {
+        return ejecutar(Pagos.CONFIRMAR, ps -> ps.setInt(1, id)) > 0;
+    }
+
+    // ---------------- DELETE ----------------
+    public boolean eliminar(int id) {
+        return ejecutar(Pagos.ELIMINAR, ps -> ps.setInt(1, id)) > 0;
+    }
+
+    private Pago mapear(ResultSet rs) throws SQLException {
+        Pago x = new Pago();
+        x.id = rs.getInt("id");
+        x.reservaId = rs.getInt("reserva_id");
+        x.monto = rs.getDouble("monto");
+        x.fecha = getFechaHora(rs, "fecha");
+        x.tipo = rs.getString("tipo");
+        x.confirmado = rs.getBoolean("confirmado");
+        return x;
     }
 }

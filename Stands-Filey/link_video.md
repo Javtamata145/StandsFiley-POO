@@ -1,4 +1,4 @@
 # LINK VIDEO
 
-canva: https://canva.link/dow2wsh87hrba5p
+canva: https://www.canva.com/design/DAHb0Uyl0ts/9DWuY3Lu22yrcaMQm0oBcQ/edit
 
