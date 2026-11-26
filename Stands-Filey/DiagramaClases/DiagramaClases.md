@@ -1,7 +1,5 @@
 # Diagrama de clases — Sistema de Stands FILEY (PD5)
 
-Este documento muestra el diagrama de clases del sistema, actualizado para la actividad del 12/Nov. Se enfoca en:
-
 - El patrón **MVC + capa de BD (CRUD)**.
 - La **separación entre la conexión a la BD y las operaciones sobre la BD**.
 - Las entidades principales: **Stand**, **Editorial** y **Reservación**.
