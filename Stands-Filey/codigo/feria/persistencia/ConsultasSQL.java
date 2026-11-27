@@ -125,6 +125,19 @@ public final class ConsultasSQL {
                 "SELECT " + COLUMNAS + " FROM pagos WHERE reserva_id = ? ORDER BY fecha";
         public static final String BUSCAR_POR_ID =
                 "SELECT " + COLUMNAS + " FROM pagos WHERE id = ?";
+        /** Pagos realizados en un mes específico: fecha >= primer día del mes y < primer día del mes siguiente. */
+        public static final String LISTAR_POR_MES =
+                "SELECT " + COLUMNAS + " FROM pagos WHERE fecha >= ? AND fecha < ? ORDER BY fecha";
+        /** Pagos de las reservaciones de una editorial (JOIN con reservas por usuario_id). */
+        public static final String LISTAR_POR_EDITORIAL =
+                "SELECT p.id, p.reserva_id, p.monto, p.fecha, p.tipo, p.confirmado "
+                + "FROM pagos p INNER JOIN reservas r ON r.id = p.reserva_id "
+                + "WHERE r.usuario_id = ? ORDER BY p.reserva_id, p.fecha";
+        /** Pagos de UNA reservación específica de UNA editorial específica. */
+        public static final String LISTAR_POR_EDITORIAL_Y_RESERVA =
+                "SELECT p.id, p.reserva_id, p.monto, p.fecha, p.tipo, p.confirmado "
+                + "FROM pagos p INNER JOIN reservas r ON r.id = p.reserva_id "
+                + "WHERE r.usuario_id = ? AND r.id = ? ORDER BY p.fecha";
         public static final String SUMAR_CONFIRMADOS =
                 "SELECT COALESCE(SUM(monto), 0) AS total FROM pagos WHERE reserva_id = ? AND confirmado = 1";
 

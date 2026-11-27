@@ -9,7 +9,10 @@ import feria.modelo.Stand;
 import feria.persistencia.dao.PagoDAO;
 import feria.persistencia.dao.ReservaDAO;
 import feria.persistencia.dao.StandDAO;
+import java.time.DateTimeException;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.Optional;
 
@@ -34,6 +37,31 @@ public class ServicioPago {
     public List<Pago> listarDeReserva(int reservaId) { return dao.listarPorReserva(reservaId); }
     public Optional<Pago> buscarPorId(int id) { return dao.buscarPorId(id); }
 
+    /** Lista de pagos realizados en un mes específico (mes 1-12). */
+    public List<Pago> listarPorMes(int anio, int mes) {
+        YearMonth periodo;
+        try {
+            periodo = YearMonth.of(anio, mes);
+        } catch (DateTimeException e) {
+            throw new IllegalArgumentException("Mes no válido: " + mes + "/" + anio + " (el mes va de 1 a 12).", e);
+        }
+        return dao.listarPorMes(periodo);
+    }
+
+    /** Todos los pagos de todas las reservaciones de una editorial. */
+    public List<Pago> listarDeEditorial(int usuarioId) {
+        return dao.listarPorEditorial(usuarioId);
+    }
+
+    /**
+     * Lista de pagos realizados para una reservación de una Editorial en específico.
+     * Valida que la reservación exista y que pertenezca a esa editorial.
+     */
+    public List<Pago> listarDeReservaDeEditorial(int usuarioId, int reservaId) {
+        validarPropietario(usuarioId, obtenerReserva(reservaId));
+        return dao.listarPorEditorialYReserva(usuarioId, reservaId);
+    }
+
     public double sumarPagosConfirmados(List<Pago> pagos) {
         return pagos.stream().filter(p -> p.confirmado).mapToDouble(p -> p.monto).sum();
     }
@@ -47,6 +75,15 @@ public class ServicioPago {
 
     // ---------------- CREATE ----------------
     /**
+     * Registro de un pago (abono) de una editorial para una de SUS reservaciones.
+     * Valida que la reservación pertenezca a la editorial y luego registra el pago.
+     */
+    public Pago registrarPago(int usuarioId, int reservaId, double monto, String tipo) {
+        validarPropietario(usuarioId, obtenerReserva(reservaId));
+        return registrarPago(reservaId, monto, tipo);
+    }
+
+    /**
      * Registra un abono o liquidación de una reserva ACTIVA.
      * Si con este pago se cubre el precio total, la reserva pasa a COMPLETADA
      * y el stand a OCUPADO (RF-013, RF-015).
@@ -55,6 +92,10 @@ public class ServicioPago {
         Reserva r = obtenerReserva(reservaId);
         if (r.estado != EstadoReserva.ACTIVA) {
             throw new IllegalStateException("La reserva " + reservaId + " no está activa (" + r.estado + ").");
+        }
+        if (r.fechaLimite != null && LocalDate.now().isAfter(r.fechaLimite)) {
+            throw new IllegalStateException("La fecha límite de la reserva " + reservaId + " ("
+                    + r.fechaLimite + ") ya pasó: no se aceptan más pagos.");
         }
         if (monto <= 0) {
             throw new IllegalArgumentException("El monto debe ser mayor a 0.");
@@ -123,6 +164,12 @@ public class ServicioPago {
         } else if (!liquidada && r.estado == EstadoReserva.COMPLETADA) {
             reservaDAO.cambiarEstado(reservaId, EstadoReserva.ACTIVA);
             standDAO.cambiarEstado(s.id, EstadoStand.RESERVADO);
+        }
+    }
+
+    private void validarPropietario(int usuarioId, Reserva r) {
+        if (r.usuarioId != usuarioId) {
+            throw new IllegalArgumentException("La reserva " + r.id + " no pertenece a la editorial " + usuarioId + ".");
         }
     }
 

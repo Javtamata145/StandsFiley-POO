@@ -1,4 +1,4 @@
-# Diagrama de clases — Sistema de Stands FILEY (PD5)
+# Diagrama de clases — Sistema de Stands FILEY (PD6)
 
 - El patrón **MVC + capa de BD (CRUD)**.
 - La **separación entre la conexión a la BD y las operaciones sobre la BD**.

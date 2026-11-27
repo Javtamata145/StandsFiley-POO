@@ -8,6 +8,8 @@ import feria.persistencia.ConexionBD;
 import feria.persistencia.dao.*;
 import feria.servicios.*;
 import java.sql.Connection;
+import java.time.YearMonth;
+import java.util.List;
 
 public class Main {
     public static void main(String[] args) {
@@ -47,6 +49,9 @@ public class Main {
             System.out.println("Pagos registrados: " + pagos.listar().size());
             System.out.println("Transferencias registradas: " + transferencias.listar().size());
             System.out.println("Notificaciones registradas: " + notificaciones.listar().size());
+            YearMonth mes = YearMonth.now();
+            System.out.println("Pagos realizados en " + mes + ": "
+                    + pagos.listarPorMes(mes.getYear(), mes.getMonthValue()).size());
 
             demostrarCrud(stands, usuarios, reservas, pagos, notificaciones, transferencias);
         } catch (Exception e) {
@@ -102,11 +107,74 @@ public class Main {
             notificaciones.marcarLeida(n.id);
             System.out.println("Notificación leída: " + notificaciones.consultar(n.id).orElseThrow().leida);
 
+            // ---------------- PAGOS (abonos a la reservación) ----------------
+            System.out.println("\n===== PAGOS: abonos de la reservación " + r.id + " =====");
+            System.out.println("Costo total del stand: $" + s.precio + " | fecha límite: " + r.fechaLimite
+                    + " | saldo pendiente: $" + pagos.saldoPendiente(r.id));
+
+            // CREATE: registro de pagos parciales de la editorial para SU reservación
+            Pago abono1 = pagos.registrarPago(usuario.id, r.id, 2000, "ABONO");
+            System.out.println("Abono registrado id " + abono1.id + " por $" + abono1.monto
+                    + " | saldo pendiente: $" + pagos.saldoPendiente(r.id));
+            Pago abono2 = pagos.registrarPago(usuario.id, r.id, 1500, "ABONO");
+            System.out.println("Abono registrado id " + abono2.id + " por $" + abono2.monto
+                    + " | saldo pendiente: $" + pagos.saldoPendiente(r.id));
+
+            // UPDATE: corregir el monto de un abono (la reserva se recalcula)
+            abono2.monto = 2500;
+            pagos.actualizar(abono2);
+            System.out.println("Abono " + abono2.id + " actualizado a $" + abono2.monto
+                    + " | monto pagado en reserva: $" + reservas.consultar(r.id).orElseThrow().montoPagado);
+
+            // READ: lista de pagos de una reservación de una editorial en específico
+            System.out.println("Pagos de la reservación " + r.id + " de la editorial '"
+                    + usuario.nombreUsuarioEditorial + "':");
+            imprimirPagos(pagos.listarDeReservaDeEditorial(usuario.id, r.id));
+
+            // READ: lista de pagos realizados en un mes específico
+            YearMonth mesActual = YearMonth.now();
+            System.out.println("Pagos realizados en " + mesActual + ":");
+            imprimirPagos(pagos.listarPorMes(mesActual.getYear(), mesActual.getMonthValue()));
+
+            // Casos que disparan excepciones a propósito
+            try {
+                pagos.registrarPago(usuario.id, r.id, 999999, "ABONO");
+            } catch (IllegalArgumentException e) {
+                System.out.println("Excepción esperada (monto excede saldo): " + e.getMessage());
+            }
+            try {
+                pagos.registrarPago(usuario.id + 100000, r.id, 100, "ABONO");
+            } catch (IllegalArgumentException e) {
+                System.out.println("Excepción esperada (reserva de otra editorial): " + e.getMessage());
+            }
+            try {
+                pagos.listarPorMes(mesActual.getYear(), 13);
+            } catch (IllegalArgumentException e) {
+                System.out.println("Excepción esperada (mes inválido): " + e.getMessage());
+            }
+
+            // Reserva de los datos de prueba (editorial 1, reserva 1, fecha límite 2026-11-25)
+            try {
+                System.out.println("Pagos de la reservación 1 de la editorial 1 (datos de prueba):");
+                imprimirPagos(pagos.listarDeReservaDeEditorial(1, 1));
+                pagos.registrarPago(1, 1, 100, "ABONO");
+            } catch (IllegalStateException | IllegalArgumentException e) {
+                System.out.println("Excepción esperada (fecha límite vencida / sin datos de prueba): "
+                        + e.getMessage());
+            }
+
+            // Liquidación: se cubre el total antes de la fecha límite
             double saldo = pagos.saldoPendiente(r.id);
             System.out.println("Saldo pendiente: $" + saldo);
-            pagos.registrarPago(r.id, saldo, "LIQUIDACION");
+            pagos.registrarPago(usuario.id, r.id, saldo, "LIQUIDACION");
             System.out.println("Reserva tras liquidar: " + reservas.consultar(r.id).orElseThrow().estado
-                    + " | Stand: " + stands.consultar(standDemo).orElseThrow().estado);
+                    + " | Stand: " + stands.consultar(standDemo).orElseThrow().estado
+                    + " | total pagado: $" + pagos.totalConfirmado(pagos.listarDeReserva(r.id)));
+            try {
+                pagos.registrarPago(usuario.id, r.id, 100, "ABONO");
+            } catch (IllegalStateException e) {
+                System.out.println("Excepción esperada (reserva ya liquidada): " + e.getMessage());
+            }
 
             // Flujo de transferencia de stand bloqueado
             propietario = usuarios.registrar("Propietario Original", "prop" + sufijo + "@feria.mx",
@@ -137,11 +205,25 @@ public class Main {
             System.out.println("Transferencia eliminada: " + transferencias.eliminar(t.id));
             System.out.println("Reserva de transferencia eliminada: " + reservas.eliminar(rt.id));
             System.out.println("Notificación eliminada: " + notificaciones.eliminar(n.id));
+            System.out.println("Pago (abono) " + abono1.id + " eliminado: " + pagos.eliminar(abono1.id)
+                    + " | reserva vuelve a: " + reservas.consultar(r.id).orElseThrow().estado
+                    + " | saldo pendiente: $" + pagos.saldoPendiente(r.id));
             System.out.println("Reserva eliminada (y sus pagos): " + reservas.eliminar(r.id));
         } catch (Exception e) {
             System.err.println("Error en la demostración: " + e.getMessage());
         } finally {
             limpiar(stands, usuarios, reservas, standDemo, standBloqueado, usuario, propietario);
+        }
+    }
+
+    private static void imprimirPagos(List<Pago> lista) {
+        if (lista.isEmpty()) {
+            System.out.println("   (sin pagos)");
+            return;
+        }
+        for (Pago p : lista) {
+            System.out.println("   - Pago " + p.id + " | reserva " + p.reservaId + " | $" + p.monto
+                    + " | " + p.fecha.toLocalDate() + " | " + p.tipo + (p.confirmado ? " | confirmado" : ""));
         }
     }
 

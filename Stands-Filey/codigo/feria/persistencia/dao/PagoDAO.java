@@ -4,6 +4,7 @@ import feria.modelo.Pago;
 import feria.persistencia.ConsultasSQL.Pagos;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.Optional;
 
@@ -21,6 +22,27 @@ public class PagoDAO extends DAOBase {
 
     public Optional<Pago> buscarPorId(int id) {
         return consultarUno(Pagos.BUSCAR_POR_ID, ps -> ps.setInt(1, id), this::mapear);
+    }
+
+    /** Pagos realizados en el mes indicado (por ejemplo YearMonth.of(2026, 11)). */
+    public List<Pago> listarPorMes(YearMonth mes) {
+        return consultarLista(Pagos.LISTAR_POR_MES, ps -> {
+            setFechaHora(ps, 1, mes.atDay(1).atStartOfDay());
+            setFechaHora(ps, 2, mes.plusMonths(1).atDay(1).atStartOfDay());
+        }, this::mapear);
+    }
+
+    /** Todos los pagos de las reservaciones de una editorial (usuario). */
+    public List<Pago> listarPorEditorial(int usuarioId) {
+        return consultarLista(Pagos.LISTAR_POR_EDITORIAL, ps -> ps.setInt(1, usuarioId), this::mapear);
+    }
+
+    /** Pagos de una reservación específica que pertenece a una editorial específica. */
+    public List<Pago> listarPorEditorialYReserva(int usuarioId, int reservaId) {
+        return consultarLista(Pagos.LISTAR_POR_EDITORIAL_Y_RESERVA, ps -> {
+            ps.setInt(1, usuarioId);
+            ps.setInt(2, reservaId);
+        }, this::mapear);
     }
 
     /** Suma de los pagos confirmados de una reserva. */
